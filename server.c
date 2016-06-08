@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -11,7 +12,6 @@ int setup_socket(char* port, struct addrinfo* servinfo);
 void get_info(char* port, struct addrinfo** servinfo);
 
 int main(int argc, char** argv) {
-
     // Info about the client's address
     struct sockaddr_storage clientaddr;
     socklen_t addr_size;
@@ -27,23 +27,27 @@ int main(int argc, char** argv) {
     
     sockdesc = setup_socket(port, servinfo);
                             
-    listen(sockdesc, BACKLOG);
+    for (;;) {
+        listen(sockdesc, BACKLOG);
 
-    addr_size = sizeof(clientaddr);
-    newsock = accept(sockdesc, ((struct sockaddr *) &clientaddr), &addr_size);
+        addr_size = sizeof(clientaddr);
+        newsock = accept(sockdesc, ((struct sockaddr *) &clientaddr), &addr_size);
 
-    char* msg = "IT WORKS!";
-    int len, bytes_sent;
+        char* msg = "IT WORKS!";
+        int len, bytes_sent;
 
-    len = strlen(msg);
-    bytes_sent = send(newsock, msg, len, 0);
+        len = strlen(msg);
+        bytes_sent = send(newsock, msg, len, 0);
 
-    if (bytes_sent < len) {
-        fputs("Not all the bytes were sent\n", stderr);
-        return 1;
+        if (bytes_sent < len) {
+            fputs("Not all the bytes were sent\n", stderr);
+            return 1;
+        }
+        close(newsock);
     }
 
     freeaddrinfo(servinfo); // Free that good addrinfo struct
+    close(sockdesc);
 
     return 0;
 }
