@@ -1,4 +1,4 @@
-## CHHTP
+## CHTTP
 
 Only works on UNIX currently. Tested on Fedora 23.
 
