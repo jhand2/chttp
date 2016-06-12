@@ -3,8 +3,11 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/sendfile.h>
 #include <sys/wait.h>
 #include <netdb.h>
 #include <signal.h>
@@ -14,6 +17,12 @@
 int setup_socket(char* port, struct addrinfo* servinfo);
 void get_info(char* port, struct addrinfo** servinfo);
 void sig_handler(int s);
+int respond(int socket);
+int send_all(int socket, char* msg);
+int get_req(int socket, char* path);
+int send_all_file(int socket, char* filename);
+
+char* ROOT;
 
 int main(int argc, char** argv) {
     // Info about the client's address
@@ -29,6 +38,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     char* port = argv[1];
+    ROOT = getenv("PWD");
     
     sockdesc = setup_socket(port, servinfo);
 
@@ -54,16 +64,9 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        char* msg = "IT WORKS!\n";
-        int len, bytes_sent;
-        len = strlen(msg);
-
         if (!fork()) {
             close(sockdesc);
-            bytes_sent = send(newsock, msg, len, 0);
-            if (bytes_sent < len) {
-                fputs("Not all the bytes were sent\n", stderr);
-            }
+            respond(newsock);
             close(newsock);
             exit(0);
         }
@@ -73,6 +76,86 @@ int main(int argc, char** argv) {
     close(sockdesc);
 
     return 0;
+}
+
+int respond(int socket) {
+    char rec_msg[99999];
+    char* request[3];
+    char* reqline;
+    int bytes_rec, bytes_sent;
+    
+    memset(rec_msg, 0, sizeof(rec_msg));
+
+    bytes_rec = recv(socket, rec_msg, sizeof(rec_msg), 0);
+    printf("Msg: %d\n%s\n", bytes_rec, rec_msg);
+
+    reqline = strtok(rec_msg, "\n");
+    request[0] = strtok(reqline, " \t");
+    request[1] = strtok(NULL, " \t");
+    request[2] = strtok(NULL, " \t");
+    char* http10 = "HTTP/1.0";
+    char* http11 = "HTTP/1.1";
+
+    if (strncmp(request[2], http10, strlen(http10)) != 0
+            && strncmp(request[2], http11, strlen(http11)) != 0) {
+        bytes_sent = send_all(socket, "HTTP/1.0 400 Bad Request\n");
+    } else {
+        printf("Request type: %s\n", request[0]);
+        if (strncmp(request[0], "GET", 3) == 0) {
+            get_req(socket, request[1]);
+        } else {
+            bytes_sent = send_all(socket, "Only supports GET\n");
+        }
+    }
+
+    return bytes_sent;
+}
+
+int get_req(int socket, char* path) {
+    int len = strlen(ROOT) + strlen(path);
+    char fullpath[len];
+    strncpy(fullpath, ROOT, strlen(ROOT) + 1);
+    printf("Root: %s\n", ROOT);
+    if (strncmp(path, "/", strlen(path)) == 0) {
+        strncat(fullpath, "/index.html", strlen("/index.html"));
+    } else {
+        strncat(fullpath, path, strlen(path));
+    }
+    send_all_file(socket, fullpath);
+
+    return 1;
+}
+
+int send_all(int socket, char* msg) {
+    return send(socket, msg, strlen(msg), 0);
+}
+
+int send_all_file(int socket, char* filename) {
+    int file = open(filename, O_RDONLY);
+    int bytes_sent;
+    int total_sent = 0;
+    off_t offset = 0;
+    struct stat stbuf;
+    printf("File Desc: %d, File name: %s\n", file, filename);
+
+    if (file == -1) {
+        total_sent = send_all(socket, "HTTP/1.0 404 File not found\n");
+    } else {
+        fstat(file, &stbuf);
+        while ((int) stbuf.st_size > total_sent) {
+            bytes_sent = sendfile(socket, file, &offset, stbuf.st_size);
+            if (bytes_sent == -1) {
+                /*total_sent = send_all(socket, "HTTP/1.0 404 File not found\n");*/
+                break;
+            }
+            total_sent += bytes_sent;
+        }
+        printf("Buff size: %d, Total sent: %d\n", (int) stbuf.st_size, total_sent);
+        close(file);
+    }
+
+
+    return total_sent;
 }
 
 void sig_handler(int s) {
