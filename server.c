@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
     
     sockdesc = setup_socket(port, servinfo);
 
-    freeaddrinfo(servinfo); // Free that good addrinfo struct
+    freeaddrinfo(servinfo); // Free the addrinfo struct
     
     sa.sa_handler = sig_handler;
     sigemptyset(&sa.sa_mask);
@@ -78,6 +78,10 @@ int main(int argc, char** argv) {
     return 0;
 }
 
+/*
+ * Recieves HTTP request from a client connected over socket and sends
+ * back requested resource.
+ */
 int respond(int socket) {
     char rec_msg[99999];
     char* request[3];
@@ -111,6 +115,9 @@ int respond(int socket) {
     return bytes_sent;
 }
 
+/*
+ * Responds to get requests, sending back requested file resources
+ */
 int get_req(int socket, char* path) {
     int len = strlen(ROOT) + strlen(path);
     char fullpath[len];
@@ -126,10 +133,17 @@ int get_req(int socket, char* path) {
     return 1;
 }
 
+/*
+ * Sends packets to client connected on socket until all of msg has
+ * been sent.
+ */
 int send_all(int socket, char* msg) {
     return send(socket, msg, strlen(msg), 0);
 }
 
+/*
+ * Same as send_all but sent data is read from a file specified by filename.
+ */
 int send_all_file(int socket, char* filename) {
     int file = open(filename, O_RDONLY);
     int bytes_sent;
@@ -164,6 +178,9 @@ void sig_handler(int s) {
     errno = saved_errno;
 }
 
+/*
+ * Opens a socket to listen for connections
+ */
 int setup_socket(char* port, struct addrinfo* servinfo) {
     struct addrinfo *info;
     int sockdesc = -1;
