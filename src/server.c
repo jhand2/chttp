@@ -1,30 +1,17 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <sys/sendfile.h>
-#include <sys/wait.h>
-#include <netdb.h>
-#include <signal.h>
+#include "server.h"
 
-#define BACKLOG 10
-
-int setup_socket(char* port, struct addrinfo* servinfo);
-void get_info(char* port, struct addrinfo** servinfo);
-void sig_handler(int s);
-int respond(int socket);
-int send_all(int socket, char* msg);
-int get_req(int socket, char* path);
-int send_all_file(int socket, char* filename);
+static int respond(int socket);
+static void get_info(char* port, struct addrinfo** servinfo);
+static void sig_handler(int s);
+static int setup_socket(char* port, struct addrinfo* servinfo);
+static int respond(int socket);
+static int send_all(int socket, char* msg);
+static int get_req(int socket, char* path);
+static int send_all_file(int socket, char* filename);
 
 char* ROOT;
 
-int main(int argc, char** argv) {
+int serve_http(char* port) {
     // Info about the client's address
     struct sockaddr_storage clientaddr;
     socklen_t addr_size;
@@ -33,11 +20,6 @@ int main(int argc, char** argv) {
     struct addrinfo *servinfo = NULL; // Gonna fill this out with getaddrinfo
     int sockdesc, newsock;
 
-    if (argc != 2) {
-        fprintf(stderr, "usage: server portnumber\n");
-        return 1;
-    }
-    char* port = argv[1];
     ROOT = getenv("PWD");
     
     sockdesc = setup_socket(port, servinfo);
@@ -47,12 +29,13 @@ int main(int argc, char** argv) {
     sa.sa_handler = sig_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
+
     if (sigaction(SIGCHLD, &sa, NULL) == -1) {
         perror("listen");
         return 1;
     }
 
-    printf("Server listening on port %s\n", port);
+    printf("Server listening on port %s...\n", port);
                             
     for (;;) {
         listen(sockdesc, BACKLOG);
@@ -82,7 +65,7 @@ int main(int argc, char** argv) {
  * Recieves HTTP request from a client connected over socket and sends
  * back requested resource.
  */
-int respond(int socket) {
+static int respond(int socket) {
     char rec_msg[99999];
     char* request[3];
     char* reqline;
@@ -118,7 +101,7 @@ int respond(int socket) {
 /*
  * Responds to get requests, sending back requested file resources
  */
-int get_req(int socket, char* path) {
+static int get_req(int socket, char* path) {
     int len = strlen(ROOT) + strlen(path);
     char fullpath[len];
     strncpy(fullpath, ROOT, strlen(ROOT) + 1);
@@ -137,14 +120,14 @@ int get_req(int socket, char* path) {
  * Sends packets to client connected on socket until all of msg has
  * been sent.
  */
-int send_all(int socket, char* msg) {
+static int send_all(int socket, char* msg) {
     return send(socket, msg, strlen(msg), 0);
 }
 
 /*
  * Same as send_all but sent data is read from a file specified by filename.
  */
-int send_all_file(int socket, char* filename) {
+static int send_all_file(int socket, char* filename) {
     int file = open(filename, O_RDONLY);
     int bytes_sent;
     int total_sent = 0;
@@ -172,7 +155,7 @@ int send_all_file(int socket, char* filename) {
     return total_sent;
 }
 
-void sig_handler(int s) {
+static void sig_handler(int s) {
     int saved_errno = errno;
     while (waitpid(-1, NULL, WNOHANG) < 0);
     errno = saved_errno;
@@ -181,7 +164,7 @@ void sig_handler(int s) {
 /*
  * Opens a socket to listen for connections
  */
-int setup_socket(char* port, struct addrinfo* servinfo) {
+static int setup_socket(char* port, struct addrinfo* servinfo) {
     struct addrinfo *info;
     int sockdesc = -1;
     get_info(port, &servinfo);
@@ -219,7 +202,7 @@ int setup_socket(char* port, struct addrinfo* servinfo) {
 /*
  * Fills out the servinfo struct.
  */
-void get_info(char* port, struct addrinfo **servinfo) {
+static void get_info(char* port, struct addrinfo **servinfo) {
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;        // Don't specify IP version

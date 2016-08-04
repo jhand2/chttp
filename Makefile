@@ -1,8 +1,11 @@
-chttp : server.o
-	gcc -Wall -o chttp server.o
+chttp : server.o main.o
+	gcc -Wall -o chttp server.o main.o
 
-server.o : server.c
-	gcc -Wall -g -c server.c
+main.o: src/main.c
+	gcc -Wall -g -c src/main.c
+
+server.o : src/server.c src/server.h
+	gcc -Wall -g -c src/server.c src/server.h
 
 clean :
 	rm -f .*.swp showip chttp
